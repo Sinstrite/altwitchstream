@@ -1,10 +1,11 @@
 /*  
     https://www.twitch.tv/sinstrite
+    https://github.com/Sinstrite/altwitchstream
 
     This code has been created for use in Adventure Land streams on the above channel.
     This code will not be modified in any drastic way outside of streams.
     There may be changes such as adding comments, fixing spacing, indentation, etc;
-    Total amount of hours streamed: 4h 2m on 22 Feb. 2021.
+    Total amount of hours streamed: 5h 3m on 24 Feb. 2021.
 
     If you want more constant updates outside of the official Adventure land Discord,
     consider joining this one: https://discord.gg/dv6xyZEvY9.
@@ -25,17 +26,25 @@
     dependency that will make much more sense once you find it. 
 */
 
+/*
+    TODO:
+    * Upgrade & compound items
+    * Farmers need to decide what monsters are best to farm (depends o
+    * Want farmers to help each other when killing harder monsters
+*/
+
 // this is for zooming in a bit using the steam client (plz add to game through UI in settings).
 const {webFrame} = require('electron'); 
 webFrame.setZoomFactor(1.25);
 
 // variables defined with const behave like let variables, except they cannot be reassigned
-const code_name = 'twitch'; // code all characters will run at start
+const code_name = 'master'; // code all characters will run at start
 const party_names = ['Sinstrite', 'Cyborg', 'Android', 'Carbon']; // keep merchant first
 const merchant_idle = [true, {map: 'main', x: 24, y: -140}];
 const potion_types = ['hpot0', 'mpot0', 200]; // value is stack amount desired
 const farm_monster = ['goo']; // can refactor to handle multiple monsters
-const sell_whitelist = ['gslime', 'slimestaff'];
+const sell_whitelist = ['gslime', 'slimestaff', 'hpbelt', 'hpamulet', 'ringsj'];
+const exchange_whitelist = ['gem0', 'armorbox', 'weaponbox'];
 const merchant_name = party_names[0];
 const farmer_names = [party_names[1], party_names[2], party_names[3]];
 const keep_whitelist = [potion_types[0], potion_types[1], 'tracker'];
@@ -57,23 +66,18 @@ setInterval(function(){
 
 // any character regardless of class runs this code
 function master_global(){
-    if(!character.rip){ // if character is dead, tried to respawn
+    if(character.rip){ // if character is dead, tried to respawn
         respawn();
     } else { // if character is alive, do stuff n things
         use_potions(); // refer to function for details
         loot();
+        handle_party(); // refer to function for details
     }
 }
 
 // only run by your merchant character (in my case the one also running other characters in the same window)
 function master_merchant(){
     if(character.name == merchant_name){
-        // we check the amount of characters in our party
-        // if we haven't got the three farmers in our party (4 ppl total)
-        // then we keep trying to create the party
-        if(Object.keys(parent.party).length < party_names.length){
-            create_party(); // refer to function for details
-        }
         open_close_stand(); // this opens and closes our stand depending on if moving or not
         if(merchant_idle[0]){ // check our const for true or false value
             merchant_handle_location_idle(); // control where merchant hangs out in their downtime
@@ -86,6 +90,7 @@ function master_merchant(){
                 buy_potions(); // refer to function for details
             }
         }
+        exchange_items();
     }
 }
 
@@ -94,7 +99,7 @@ function master_farmers(){
     if(farmer_names.includes(character.name)){
         accept_party_invite(merchant_name); // will join the merchants party when the merchant sends an invite
         send_items_to_merchant(); // sends loot and gold to merchant when nearby
-        handle_monster_hunting(); // attempts to complete monster hunt quests and farm tokens
+        handle_farming(); // attempts to complete monster hunt quests and farm tokens
         request_merchant(); // asks the merchant to deliver potions when low or when low inventory space
     }
 }
@@ -147,19 +152,19 @@ function buy_potions(){
 // refactored to be more efficient than default function
 function use_potions(){
     // immediately need mana to be able to continue attacking, use skills, etc
-    if(character.hp <= character.mp_cost){
+    if(character.mp <= character.mp_cost){
         if(quantity(potion_types[1]) > 0){
             parent.use_skill('mp');
         }
     } else {
         // focuses on health before mana, as long as there's just enough mana
-        if(cur_hp <= character.max_hp - parent.G.items[potion_types[0]].gives[0][1]){
+        if(character.hp <= character.max_hp - parent.G.items[potion_types[0]].gives[0][1]){
             if(quantity(potion_types[0]) > 0){
                 parent.use_skill('hp');
             }
         } else {
             // if health is okay, focus on mana
-            if(character.hp <= character.max_mp - parent.G.items[potion_types[1]].gives[0][1]){
+            if(character.mp <= character.max_mp - parent.G.items[potion_types[1]].gives[0][1]){
                 if(quantity(potion_types[1]) > 0){
                     parent.use_skill('mp');
                 }
@@ -181,10 +186,17 @@ function open_close_stand(){
 
 // this is run only once when the code is first initialized, and only by the merchant
 function start_farmers(){
-    // you can add strings for character and code slot names
-    parent.start_character_runner(farmer_names[0], code_name);
-	parent.start_character_runner(farmer_names[1], code_name);
-	parent.start_character_runner(farmer_names[2], code_name);  
+    // loop only through our farmer characters
+    for(let i in farmer_names){
+        let farmer = farmer_names[i]; // define each farmer
+        if(farmer){
+            // this will start a cahracter based on where we are in the array loop
+            // you can add strings for character and code slot names
+            parent.start_character_runner(farmer, code_name);
+        }
+    }
+
+
 }
 
 // the function the merchant uses to try and create a party
@@ -234,6 +246,15 @@ function send_gold_to_merchant(){
 
 // the farmers will try to farm normal monsters if they deem the monsters designated in hunting quests too hard
 function farm_normally(){
+    // if we don't have a monster hunt quest, don't farm normally, go get a quest
+    if(character.s.monsterhunt == undefined){
+        return; // stop running the function
+    } else {
+        // if we do have a quest but the monster to kill is not in our whitelist
+        if(monster_hunt_whitelist.includes(character.s.monsterhunt.id)){
+            return; // stop running the function
+        }
+    }
     var target = get_targeted_monster(); // if we have a target, define it
     // this checks to make sure any monster around is in our farm_monster array
     // no target means it's safe to assume another player has not aggro'd it, and we get the rewards on kill
@@ -254,9 +275,7 @@ function farm_normally(){
     }
 }
 
-// this tries to kill monsters that the monsterhunter npc assigns quests for.
-// useful for getting a tracker and monster token farming
-function handle_monster_hunting(){
+function handle_monster_hunts(){
     var npc = get_npc_by_id('monsterhunter'); // refer to function for details
     var npc_location  = {x: npc.x, y: npc.y, map: npc.map};
     // checks to see if we have a monster hunting quest
@@ -314,11 +333,17 @@ function handle_monster_hunting(){
                     }
                 }
             }
-        } else {
-            // too hard to complete quest, farm normally
-            farm_normally(); // refer to function for details
         }
     }
+}
+
+// this tries to kill monsters that the monsterhunter npc assigns quests for.
+// useful for getting a tracker and monster token farming
+function handle_farming(){
+    // make sure we have quests at all times, and decide if we can complete them
+    handle_monster_hunts();
+    // too hard to complete quest, farm normally
+    farm_normally(); // refer to function for details
 }
 
 // custom function to be used multiple times, speaks for itself (search it to see how it's being used)
@@ -439,6 +464,72 @@ function merchant_handle_location_idle(){
         if(distance >= 10){
             if(!smart.moving){
                 smart_move(location);
+            }
+        }
+    }
+}
+
+// merchant and farmers run logic allowing them to always build a proper party
+function handle_party(){
+    if(character.name == merchant_name){
+        // we check the amount of characters in our party
+        // if we haven't got the three farmers in our party (4 ppl total)
+        // then we keep trying to create the party
+        // merchant only runs this party of the logic
+        if(Object.keys(parent.party).length < party_names.length){
+            // loop through our party members array
+            for(let i in party_names){
+                let player = party_names[i]; // define each memeber in the array
+                if(player && player != merchant_name){
+                    // if the player is not in a party, or if they are but not ours...
+                    if(player.party == undefined || (player.party != undefined && player.party != character.name)){
+                        // invite them to our party
+                        send_party_invite(player);
+                    }
+                }
+            }
+        }
+    // only farmers run this party of the logic
+    } else if(farmer_names.includes(character.name)){
+        // if we are not in any party
+        if(character.party == null){
+            accept_party_invite(merchant_name); // accept invites from our merchant
+        } else {
+            // if we are in a party, but it's not the merchant's party...
+            if(character.party != merchant_name){
+                // leave this party to go to the merchant's party
+                leave_party();
+            }
+        }
+    }
+}
+
+// we can exchange items based on a whitelist array we create
+function exchange_items(){
+    // loop through our inventory
+    for(let i in character.items){
+        let item = character.items[i]; // define an item in each slot
+        if(item){ // if slot is not empty
+            // if the item name is included in our whitelist
+            if(exchange_whitelist.includes(item.name)){
+                var npc = get_npc_by_id('exchange');
+                // we need to decide if we should move to the exchange npc
+                if(character.map != npc.map){
+                    var distance = null;
+                } else {
+                    var distance = distance_to_point(npc.x, npc.y, character.real_x, character.real_y);
+                }
+                // if the distance to the exchange npc is too far
+                if(distance == null || (distance != null && distance >= 300)){
+                    if(!smart.moving){
+                        // we will move to the exchange npc
+                        var location = {x: npc.x, y: npc.y, map: npc.map};
+                        smart_move(location);
+                    }
+                } else { // are we close enough to the exchange npc?
+                    // if we are, then do an exchange!
+                    exchange(i);
+                }
             }
         }
     }
