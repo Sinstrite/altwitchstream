@@ -5,7 +5,7 @@
     This code has been created for use in Adventure Land streams on the above channel.
     This code will not be modified in any drastic way outside of streams.
     There may be changes such as adding comments, fixing spacing, indentation, etc;
-    Total amount of hours streamed: 5h 3m on 24 Feb. 2021.
+    Total amount of hours streamed: 9h 45m; last on 7 Mar. 2021.
 
     If you want more constant updates outside of the official Adventure land Discord,
     consider joining this one: https://discord.gg/dv6xyZEvY9.
@@ -48,7 +48,7 @@ const exchange_whitelist = ['gem0', 'armorbox', 'weaponbox'];
 const merchant_name = party_names[0];
 const farmer_names = [party_names[1], party_names[2], party_names[3]];
 const keep_whitelist = [potion_types[0], potion_types[1], 'tracker'];
-const monster_hunt_whitelist = [farm_monster[0]]; // can refactor to include strings & farm_monster array
+const monster_hunt_whitelist = [farm_monster[0], 'crab', 'bee']; // can refactor to include strings & farm_monster array
 
 // run all code only once
 setTimeout(function(){
@@ -153,7 +153,7 @@ function buy_potions(){
 function use_potions(){
     // immediately need mana to be able to continue attacking, use skills, etc
     if(character.mp <= character.mp_cost){
-        if(quantity(potion_types[1]) > 0){
+        if(brain.inventory[41].q > 0){
             parent.use_skill('mp');
         }
     } else {
@@ -312,7 +312,7 @@ function handle_monster_hunts(){
                         attack_monsters(target); // refer to function for details
                     } else {
                         // refer to the 'farm_normally()' custom function
-                        var desired_monster = get_nearest_monster({type: monster});
+                        var desired_monster = get_nearest_monster({type: monster, no_target: true});
                         if(!desired_monster){
                             if(!smart.moving){
                                 smart_move(monster);
